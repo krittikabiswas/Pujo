@@ -1,6 +1,6 @@
 // src/Home.tsx
 import { useWallet } from '@txnlab/use-wallet-react'
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react' // <- Add useEffect
 import * as algosdk from 'algosdk'
 
 // --- DAO Imports ---
@@ -13,15 +13,42 @@ const ALGOD_TOKEN = ""
 const ALGOD_PORT = ""
 const algodClient = new algosdk.Algodv2(ALGOD_TOKEN, ALGOD_SERVER, ALGOD_PORT)
 
+// --- ADD THIS: Token Constants ---
+const APP_ID = 1002
+const ANJ_TOKEN_ID = 1003 // ← Replace with your actual ANJ Token Asset ID
+
 const Home: React.FC = () => {
   const [openWalletModal, setOpenWalletModal] = useState(false)
   const [donationAmount, setDonationAmount] = useState(0)
   const [info, setInfo] = useState("")
   const { activeAddress, transactionSigner } = useWallet()
 
-  const APP_ID = 1002
+  // --- ADD THIS: State for token balance ---
+  const [anjBalance, setAnjBalance] = useState(0)
 
   const toggleWalletModal = () => setOpenWalletModal(!openWalletModal)
+
+  // --- ADD THIS: Function to fetch token balance ---
+  const fetchTokenBalance = async (address: string) => {
+    try {
+      const accountInfo = await algodClient.accountInformation(address).do()
+      const assets = accountInfo.assets || []
+      const anjAsset = assets.find((asset: any) => asset['asset-id'] === ANJ_TOKEN_ID)
+      setAnjBalance(anjAsset ? anjAsset.amount : 0)
+    } catch (error) {
+      console.error("Error fetching token balance:", error)
+      setAnjBalance(0)
+    }
+  }
+
+  // --- ADD THIS: Fetch balance when wallet connects ---
+  useEffect(() => {
+    if (activeAddress) {
+      fetchTokenBalance(activeAddress)
+    } else {
+      setAnjBalance(0)
+    }
+  }, [activeAddress])
 
   // --- Main Donation Logic ---
   const handleDonate = async () => {
@@ -47,7 +74,14 @@ const Home: React.FC = () => {
     const sendResult = await algodClient.sendRawTransaction(rawPayment).do()
 
     setInfo(`Donation successful! Transaction ID: ${sendResult.txid}`)
-  } // ✅ <-- this was missing
+    
+    // --- ADD THIS: Refresh token balance after donation ---
+    setTimeout(() => {
+      if (activeAddress) {
+        fetchTokenBalance(activeAddress)
+      }
+    }, 3000) // Wait 3 seconds for token distribution
+  }
 
   // --- UI ---
   return (
@@ -58,6 +92,16 @@ const Home: React.FC = () => {
           <p className="py-6 text-xl">
             Donate ALGO to participate in the festival and receive ANJ governance tokens.
           </p>
+
+          {/* --- ADD THIS: Display Token Balance --- */}
+          {activeAddress && anjBalance > 0 && (
+            <div className="mb-4 p-3 bg-teal-100 rounded-lg">
+              <p className="text-lg font-semibold text-teal-800">
+                Your ANJ Tokens: {anjBalance}
+              </p>
+              <p className="text-sm text-teal-600">Use these to vote on proposals!</p>
+            </div>
+          )}
 
           {!activeAddress && (
             <button className="btn btn-primary m-2" onClick={toggleWalletModal}>
